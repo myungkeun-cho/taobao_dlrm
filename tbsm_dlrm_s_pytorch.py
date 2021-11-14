@@ -1008,6 +1008,46 @@ def run():
     parser.add_argument("--lr-decay-start-step", type=int, default=0)
     parser.add_argument("--lr-num-decay-steps", type=int, default=0)
 
+    #tbsm
+    parser.add_argument("--datatype", type=str, default="taobao")
+    # mode: train or inference or both
+    parser.add_argument("--mode", type=str, default="train")  # train, test, train-test
+    # data locations
+    parser.add_argument("--raw-train-file", type=str, default="./data/taobao_data/train.txt")
+    parser.add_argument("--pro-train-file", type=str, default="./data/taobao_data/train.npz")
+    parser.add_argument("--raw-test-file", type=str, default="./data/taobao_data/test.txt")
+    parser.add_argument("--pro-test-file", type=str, default="./data/taobao_data/test.npz")
+    parser.add_argument("--pro-val-file", type=str, default="./data/taobao_data/val.npz")
+    parser.add_argument("--num-train-pts", type=int, default=100)
+    parser.add_argument("--num-val-pts", type=int, default=20)
+    # time series length for train/val and test
+    parser.add_argument("--ts-length", type=int, default=20)
+    # model_type = "tsl", "mha", "rnn"
+    parser.add_argument("--model-type", type=str, default="tsl")  # tsl, mha, rnn
+    parser.add_argument("--tsl-seq", action="store_true", default=False)  # k-seq method
+    parser.add_argument("--tsl-proj", action="store_true", default=True)  # sphere proj
+    parser.add_argument("--tsl-inner", type=str, default="def")  # ind, def, dot
+    parser.add_argument("--tsl-num-heads", type=int, default=1)  # num tsl components
+    parser.add_argument("--mha-num-heads", type=int, default=8)  # num mha heads
+    parser.add_argument("--rnn-num-layers", type=int, default=5)  # num rnn layers
+    # num positive (and negative) points per user
+    parser.add_argument("--points-per-user", type=int, default=10)
+    # model arch related parameters
+    parser.add_argument("--tsl-mlp", type=str, default="2-2")
+    # MLP 4: final prob. of click: 2 * top[-1] --> [0,1] (in_dim adjusted)
+    parser.add_argument("--arch-mlp", type=str, default="4-1")
+    # interactions
+    parser.add_argument("--tsl-interaction-op", type=str, default="dot")
+    parser.add_argument("--tsl-mechanism", type=str, default="mlp")  # mul or MLP
+    parser.add_argument("--no-select-seed", action="store_true", default=False)
+    # inference
+    parser.add_argument("--quality-metric", type=str, default="auc")
+    # saving model
+    parser.add_argument("--device-num", type=int, default=0)
+
+    parser.add_argument("--enable-summary", action="store_true", default=False)
+    parser.add_argument("--run-fast", action="store_true", default=False)
+
     global args
     global nbatches
     global nbatches_test
@@ -1108,6 +1148,13 @@ def run():
             ln_emb = np.array(ln_emb)
         m_den = train_data.m_den
         ln_bot[0] = m_den
+    elif args.data_generation == "taobao":
+        ln_emb = np.fromstring(args.arch_embedding_size, dtype=int, sep="-")
+        m_den = ln_bot[0]
+        train_ld, _ = tp.make_tbsm_data_and_loader(args, "train")
+        test_ld, _ = tp.make_tbsm_data_and_loader(args, "test")
+        nbatches = len(train_ld) if args.num_batches == 0 else args.num_batches
+        nbatches_test = len(test_ld)
     else:
         # input and target at random
         ln_emb = np.fromstring(args.arch_embedding_size, dtype=int, sep="-")
