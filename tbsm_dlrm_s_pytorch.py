@@ -70,6 +70,9 @@ import warnings
 # data generation
 import dlrm_data_pytorch as dp
 
+#taobao data generation
+import tbsm_data_pytorch as tp
+
 # For distributed run
 import extend_distributed as ext_dist
 import mlperf_logger
@@ -779,20 +782,43 @@ def inference(
             continue
 
         # forward pass
-        Z_test = dlrm_wrap(
-            X_test,
-            lS_o_test,
-            lS_i_test,
-            use_gpu,
-            device,
-            ndevices=ndevices,
-        )
+        if args.data_generation == "taobao" and not args.inference_only:
+            Z_test = dlrm_wrap(
+                X_test[-1],
+                lS_o_test[-1],
+                lS_i_test[-1],
+                use_gpu,
+                device,
+                ndevices=ndevices,
+            )
+        elif args.data_generation == "taobao" and args.inference_only:
+            Z_test = dlrm_wrap(
+                X_test[-1],
+                lS_o_test[-1],
+                lS_i_test[-1],
+                use_gpu,
+                device,
+                ndevices=ndevices,
+            )
+        else:
+            Z_test = dlrm_wrap(
+                X_test,
+                lS_o_test,
+                lS_i_test,
+                use_gpu,
+                device,
+                ndevices=ndevices,
+            )
         ### gather the distributed results on each rank ###
         # For some reason it requires explicit sync before all_gather call if
         # tensor is on GPU memory
         if Z_test.is_cuda:
             torch.cuda.synchronize()
-        (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
+
+        if args.data_generation == "taobao":
+            (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test[-1].size(0))
+        else :
+            (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
         if ext_dist.my_size > 1:
             Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
 
@@ -812,6 +838,8 @@ def inference(
 
                 test_accu += A_test
                 test_samp += mbs_test
+                #print(test_accu)
+                #print(test_samp)
 
     if args.mlperf_logging:
         with record_function("DLRM mlperf sklearn metrics compute"):
@@ -847,6 +875,10 @@ def inference(
     else:
         acc_test = test_accu / test_samp
         writer.add_scalar("Test/Acc", acc_test, log_iter)
+        if args.enable_summary:
+            with open('summary.npy', 'wb') as acc_loss:
+                np.save(acc_loss, acc_test)
+            writer.close()
 
     model_metrics_dict = {
         "nepochs": args.nepochs,
@@ -1009,7 +1041,7 @@ def run():
     parser.add_argument("--lr-num-decay-steps", type=int, default=0)
 
     #tbsm
-    parser.add_argument("--datatype", type=str, default="taobao")
+    #parser.add_argument("--datatype", type=str, default="taobao") -> args.data-generation
     # mode: train or inference or both
     parser.add_argument("--mode", type=str, default="train")  # train, test, train-test
     # data locations
@@ -1152,6 +1184,7 @@ def run():
         ln_emb = np.fromstring(args.arch_embedding_size, dtype=int, sep="-")
         m_den = ln_bot[0]
         train_ld, _ = tp.make_tbsm_data_and_loader(args, "train")
+        val_ld, _ = tp.make_tbsm_data_and_loader(args, "val")
         test_ld, _ = tp.make_tbsm_data_and_loader(args, "test")
         nbatches = len(train_ld) if args.num_batches == 0 else args.num_batches
         nbatches_test = len(test_ld)
@@ -1160,7 +1193,7 @@ def run():
         ln_emb = np.fromstring(args.arch_embedding_size, dtype=int, sep="-")
         m_den = ln_bot[0]
         train_data, train_ld, test_data, test_ld = dp.make_random_data_and_loader(args, ln_emb, m_den)
-        nbatches = args.num_batches if args.num_batches > 0 else len(train_ld)
+        nbatches = len(train_ld) if args.num_batches == 0 else args.num_batches
         nbatches_test = len(test_ld)
 
     args.ln_emb = ln_emb.tolist()
@@ -1171,6 +1204,9 @@ def run():
     m_spa = args.arch_sparse_feature_size
     ln_emb = np.asarray(ln_emb)
     num_fea = ln_emb.size + 1  # num sparse + num dense features
+
+    if args.data_generation == "taobao":
+        ln_bot[ln_bot.size - 1] = m_spa #about tbsm code
 
     m_den_out = ln_bot[ln_bot.size - 1]
     if args.arch_interaction_op == "dot":
@@ -1596,9 +1632,9 @@ def run():
 
                     # forward pass
                     Z = dlrm_wrap(
-                        X,
-                        lS_o,
-                        lS_i,
+                        X[-1],
+                        lS_o[-1],
+                        lS_i[-1],
                         use_gpu,
                         device,
                         ndevices=ndevices,
@@ -1652,7 +1688,7 @@ def run():
                     )
                     should_test = (
                         (args.test_freq > 0)
-                        and (args.data_generation in ["dataset", "random"])
+                        and (args.data_generation in ["dataset", "random", "taobao"]) #for tbsm code
                         and (((j + 1) % args.test_freq == 0) or (j + 1 == nbatches))
                     )
 
@@ -1689,7 +1725,10 @@ def run():
 
                     # testing
                     if should_test:
-                        epoch_num_float = (j + 1) / len(train_ld) + k + 1
+                        if args.data_generation == "taobao":
+                            epoch_num_float = (j + 1) / len(val_ld) + k + 1
+                        else:
+                            epoch_num_float = (j + 1) / len(train_ld) + k + 1
                         if args.mlperf_logging:
                             mlperf_logger.barrier()
                             mlperf_logger.log_start(
@@ -1705,16 +1744,27 @@ def run():
                         print(
                             "Testing at - {}/{} of epoch {},".format(j + 1, nbatches, k)
                         )
-                        model_metrics_dict, is_best = inference(
-                            args,
+                        if args.data_generation == "taobao":
+                            model_metrics_dict, is_best = inference(args,
                             dlrm,
                             best_acc_test,
                             best_auc_test,
-                            test_ld,
+                            val_ld,
                             device,
                             use_gpu,
                             log_iter,
-                        )
+                            )
+                        else:
+                            model_metrics_dict, is_best = inference(
+                                args,
+                                dlrm,
+                                best_acc_test,
+                                best_auc_test,
+                                test_ld,
+                                device,
+                                use_gpu,
+                                log_iter,
+                            )
 
                         if (
                             is_best
