@@ -406,7 +406,8 @@ class DLRM_Net(nn.Module):
 
         ly = []
         for k, sparse_index_group_batch in enumerate(lS_i):
-            sparse_offset_group_batch = lS_o[k]
+            #sparse_offset_group_batch = lS_o[k]
+            sparse_offset_group_batch = torch.tensor(list(range(0, 256, 10)))
 
             # embedding lookup
             # We are using EmbeddingBag, which implicitly uses sum operator.
@@ -1045,9 +1046,9 @@ def run():
     # mode: train or inference or both
     parser.add_argument("--mode", type=str, default="train")  # train, test, train-test
     # data locations
-    parser.add_argument("--raw-train-file", type=str, default="./data/taobao_data/train.txt")
+    parser.add_argument("--raw-train-file", type=str, default="./data/taobao_data/taobao_train.txt")
     parser.add_argument("--pro-train-file", type=str, default="./data/taobao_data/train.npz")
-    parser.add_argument("--raw-test-file", type=str, default="./data/taobao_data/test.txt")
+    parser.add_argument("--raw-test-file", type=str, default="./data/taobao_data/taobao_test.txt")
     parser.add_argument("--pro-test-file", type=str, default="./data/taobao_data/test.npz")
     parser.add_argument("--pro-val-file", type=str, default="./data/taobao_data/val.npz")
     parser.add_argument("--num-train-pts", type=int, default=100)

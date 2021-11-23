@@ -1605,7 +1605,7 @@ def run():
                     )
                     should_test = (
                         (args.test_freq > 0)
-                        and (args.data_generation in ["dataset", "random"])
+                        and (args.data_generation in ["dataset", "random", "synthetic"])
                         and (((j + 1) % args.test_freq == 0) or (j + 1 == nbatches))
                     )
 

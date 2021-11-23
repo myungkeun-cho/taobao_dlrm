@@ -21,10 +21,8 @@ class TBSMDataset():
 
     def __init__(
             self,
-            #datatype,
             data_generation,
             mode,
-            ts_length=20,
             points_per_user=4,
             numpy_rand_seed=7,
             raw_path="",
@@ -40,7 +38,6 @@ class TBSMDataset():
         self.mode = mode
         # save dataset parameters
         self.total = num_pts  # number of lines in txt to process
-        self.ts_length = ts_length
         self.points_per_user = points_per_user  # pos and neg points per user
         self.spa_fea_sizes = spa_fea_sizes
         self.M = 200  # max history length
@@ -57,7 +54,6 @@ class TBSMDataset():
         else:
             file = str(pro_data)
             levels = np.fromstring(self.spa_fea_sizes, dtype=int, sep="-")
-            #if datatype == "taobao":
             if data_generation == "taobao":
                 self.Unum = levels[0]  # 987994  num of users
                 self.Inum = levels[1]  # 4162024 num of items
@@ -73,7 +69,6 @@ class TBSMDataset():
                         raw_path,
                         file,
                     )
-            #elif datatype == "synthetic":
             elif data_generation == "synthetic":
                 self.build_synthetic_train_or_val(
                     file,
@@ -84,9 +79,6 @@ class TBSMDataset():
             self.X_cat = data["X_cat"]
             self.X_int = data["X_int"]
             self.y = data["y"]
-
-        print("*")
-
 
     # common part between train/val and test generation
     # truncates (if needed) and shuffles data points
@@ -103,17 +95,17 @@ class TBSMDataset():
 
         # shuffle
         #if do_shuffle:
-            #indices = np.arange(len(y))
-            #indices = np.random.permutation(indices)
-            #users = users[indices]
-            #items = items[indices]
-            #cats = cats[indices]
-            #times = times[indices]
-            #y = y[indices]
+        #    indices = np.arange(len(y))
+        #    indices = np.random.permutation(indices)
+        #    users = users[indices]
+        #    items = items[indices]
+        #    cats = cats[indices]
+        #    times = times[indices]
+        #    y = y[indices]
 
         N = len(y)
-        X_cat = np.zeros((3, N, self.ts_length + 1), dtype="i4")  # 4 byte int
-        X_int = np.zeros((1, N, self.ts_length + 1), dtype=np.float)
+        X_cat = np.zeros((3, N, 1), dtype="i4")  # 4 byte int
+        X_int = np.zeros((1, N, 1), dtype=np.float)
         X_cat[0, :, :] = users
         X_cat[1, :, :] = items
         X_cat[2, :, :] = cats
@@ -151,14 +143,14 @@ class TBSMDataset():
 
         r_target = np.arange(0, self.M - 1)
 
-        #time = np.arange(self.ts_length + 1, dtype=np.int32) / (self.ts_length + 1)
-        time = np.arange(21, dtype=np.int32) / (21)
-        # time = np.ones(self.ts_length + 1, dtype=np.int32)
+        #time = np.arange(1, dtype=np.int32) / (1)
+        time = np.array([np.random.randint(self.numpy_rand_seed)], dtype=np.int32) / self.numpy_rand_seed
+        # time = np.ones(1, dtype=np.int32)
 
-        users = np.zeros((self.total_out, self.ts_length + 1), dtype="i4")  # 4 byte int
-        items = np.zeros((self.total_out, self.ts_length + 1), dtype="i4")  # 4 byte int
-        cats = np.zeros((self.total_out, self.ts_length + 1), dtype="i4")  # 4 byte int
-        times = np.zeros((self.total_out, self.ts_length + 1), dtype=np.float)
+        users = np.zeros((self.total_out, 1), dtype="i4")  # 4 byte int
+        items = np.zeros((self.total_out, 1), dtype="i4")  # 4 byte int
+        cats = np.zeros((self.total_out, 1), dtype="i4")  # 4 byte int
+        times = np.zeros((self.total_out, 1), dtype=np.float)
         y = np.zeros(self.total_out, dtype="i4")  # 4 byte int
 
         # determine how many datapoints to take from each user based on the length of
@@ -216,15 +208,15 @@ class TBSMDataset():
                 ind = int((last - first) // 10)  # index into regime array
                 # pos
                 for _ in range(regime[ind]):
-                    a1 = min(first + self.ts_length, last - 1)
+                    a1 = min(first, last - 1)
                     end = np.random.randint(a1, last)
-                    indices = np.arange(end - self.ts_length, end + 1)
-                    #if items_[indices[0]] == 0:
-                    #    t_short += 1
+                    indices = np.arange(end, end + 1)
+                    if items_[indices[0]] == 0:
+                        t_short += 1
                     items[t] = items_[indices]
                     cats[t] = cats_[indices]
-                    users[t] = np.full(self.ts_length + 1, user)
-                    times[t] = users[t] / 7
+                    users[t] = np.full(1, user)
+                    times[t] = time
                     y[t] = 1
                     # check
                     if np.any(users[t] < 0) or np.any(items[t] < 0) \
@@ -235,19 +227,19 @@ class TBSMDataset():
                     t_pos += 1
                 # neg
                 for _ in range(regime[ind]):
-                    a1 = min(first + self.ts_length - 1, last - 1)
+                    a1 = min(first - 1, last - 1)
                     end = np.random.randint(a1, last)
-                    indices = np.arange(end - self.ts_length + 1, end + 1)
-                    #if items_[indices[0]] == 0:
-                    #    t_short += 1
+                    indices = np.arange(end, end + 1)
+                    if items_[indices[0]] == 0:
+                        t_short += 1
                     items[t, :-1] = items_[indices]
                     cats[t, :-1] = cats_[indices]
                     neg_indices = np.random.choice(r_target, 1,
                     replace=False)   # random final item
                     items[t, -1] = neg_items_[neg_indices]
                     cats[t, -1] = neg_cats_[neg_indices]
-                    users[t] = np.full(self.ts_length + 1, user)
-                    times[t] = users[t] / 7
+                    users[t] = np.full(1, user)
+                    times[t] = time
                     y[t] = 0
                     # check
                     if np.any(users[t] < 0) or np.any(items[t] < 0) \
@@ -273,16 +265,15 @@ class TBSMDataset():
         self.total = i + 1
 
         self.total_out = self.total  # pos + neg points
-        print("ts_length: ", self.ts_length)
         print("Total number of points in raw datafile: ", self.total)
         print("Total number of points in output will be at most: ", self.total_out)
 
-        time = np.arange(self.ts_length + 1, dtype=np.int32) / (self.ts_length + 1)
+        time = np.arange(1, dtype=np.int32) / (1)
 
-        users = np.zeros((self.total_out, self.ts_length + 1), dtype="i4")  # 4 byte int
-        items = np.zeros((self.total_out, self.ts_length + 1), dtype="i4")  # 4 byte int
-        cats = np.zeros((self.total_out, self.ts_length + 1), dtype="i4")  # 4 byte int
-        times = np.zeros((self.total_out, self.ts_length + 1), dtype=np.float)
+        users = np.zeros((self.total_out, 1), dtype="i4")  # 4 byte int
+        items = np.zeros((self.total_out, 1), dtype="i4")  # 4 byte int
+        cats = np.zeros((self.total_out, 1), dtype="i4")  # 4 byte int
+        times = np.zeros((self.total_out, 1), dtype=np.float)
         y = np.zeros(self.total_out, dtype="i4")  # 4 byte int
 
         # try to generate the desired number of points (time series) per each user.
@@ -312,9 +303,9 @@ class TBSMDataset():
                 )
 
                 # get pts
-                items[t] = items_[-(self.ts_length + 1):]
-                cats[t] = cats_[-(self.ts_length + 1):]
-                users[t] = np.full(self.ts_length + 1, user)
+                items[t] = items_[-1:]
+                cats[t] = cats_[-1:]
+                users[t] = np.full(1, user)
                 times[t] = time
                 # check
                 if np.any(users[t] < 0) or np.any(items[t] < 0) \
@@ -329,6 +320,9 @@ class TBSMDataset():
 
         print("total points, pos points, neg points: ", t, t_pos, t_neg)
 
+        #for multi hot
+
+
         self.truncate_and_save(out_file, False, t, users, items, cats, times, y)
         return
 
@@ -339,9 +333,9 @@ class TBSMDataset():
         fea_sizes = np.fromstring(self.spa_fea_sizes, dtype=int, sep="-")
         maxval = np.min(fea_sizes)
         num_s = len(fea_sizes)
-        X_cat = np.random.randint(maxval, size=(num_s, self.total, self.ts_length + 1),
+        X_cat = np.random.randint(maxval, size=(num_s, self.total, 1),
         dtype="i4")  # 4 byte int
-        X_int = np.random.uniform(0, 1, size=(1, self.total, self.ts_length + 1))
+        X_int = np.random.uniform(0, 1, size=(1, self.total, 1))
         y = np.random.randint(0, 2, self.total, dtype="i4")  # 4 byte int
 
         # saving to compressed numpy file
@@ -370,7 +364,7 @@ class TBSMDataset():
 
 # defines transform to be performed during each call to batch,
 # used by loader
-def collate_wrapper_tbsm(list_of_tuples):
+def collate_wrapper_tbsm(list_of_tuples, data_generation):
     # turns tuple into X, S_o, S_i, take last ts_length items
 
     data = list(zip(*list_of_tuples))
@@ -382,39 +376,38 @@ def collate_wrapper_tbsm(list_of_tuples):
     num_den_fea = all_int.shape[1]
     num_cat_fea = all_cat.shape[1]
     batchSize = all_cat.shape[0]
-    ts_len = all_cat.shape[2]
-    all_int = torch.reshape(all_int, (batchSize, num_den_fea * ts_len))
+    #ts_len = all_cat.shape[2] ts-length가 0(없음)이기 때문에 항상 1
+    all_int = torch.reshape(all_int, (batchSize, num_den_fea))
 
     X_buf = []
     X = []
     lS_i = []
+    lS_i_buf = []
     lS_o = []
     T = []
     data_buf = []
 
-    # transform data into the form used in dlrm nn
-    for j in range(ts_len):
-
+    if data_generation == "train" or data_generation == "val":
+        # transform data into the form used in dlrm nn
         lS_i_h = []
         for i in range(num_cat_fea):
-            lS_i_h.append(all_cat[:, i, j])
+            for j in all_cat[:,i]:
+                lS_i_buf.extend(j)
+            lS_i_h.append(torch.tensor(lS_i_buf))
+            lS_i_buf = []
 
-        #lS_o_h = [torch.tensor(range(batchSize)) for _ in range(len(lS_i_h))]
         lS_o_h = [torch.tensor(list(range(0, batchSize, 10))) for _ in range(len(lS_i_h))]
-
 
         lS_i = lS_i_h
         lS_o = lS_o_h
         for k in range(0, batchSize, 10):
             X_buf.append([all_int[k][0].tolist()])
         X = torch.tensor(X_buf)
-        #X.append(X_buf[0][k] for k in range(0, batchSize, 10))
 
-    for k, l in enumerate(data[2]):
-        if k%10 == 0:
-            data_buf.append(l)
-    T = torch.tensor(tuple(data_buf), dtype=torch.float32).view(-1, 1)
-    #T = torch.tensor(data[2], dtype=torch.float32).view(-1, 1)
+        for k, l in enumerate(data[2]):
+            if k%10 == 0:
+                data_buf.append(l)
+        T = torch.tensor(tuple(data_buf), dtype=torch.float32).view(-1, 1)
 
     return X, lS_o, lS_i, T
 
@@ -425,16 +418,16 @@ def make_tbsm_data_and_loader(args, mode):
     if mode == "train":
         raw = args.raw_train_file
         proc = args.pro_train_file
-        numpts = args.num_train_pts
+        numpts = args.num_train_pts #txt 파일 줄 수
         batchsize = args.mini_batch_size
-        doshuffle = True
+        doshuffle = False
     elif mode == "val":
         raw = args.raw_train_file
         proc = args.pro_val_file
         numpts = args.num_val_pts
         #batchsize = 25000
         batchsize = args.mini_batch_size
-        doshuffle = True
+        doshuffle = False
     else:
         raw = args.raw_test_file
         proc = args.pro_test_file
@@ -443,10 +436,8 @@ def make_tbsm_data_and_loader(args, mode):
         doshuffle = False
 
     data = TBSMDataset(
-        #args.datatype,
         args.data_generation,
         mode,
-        args.ts_length,
         args.points_per_user,
         args.numpy_rand_seed,
         raw,
@@ -459,7 +450,7 @@ def make_tbsm_data_and_loader(args, mode):
         data,
         batch_size=batchsize * 10,
         num_workers=0,
-        collate_fn=collate_wrapper_tbsm,
+        collate_fn= lambda list_of_tuples : collate_wrapper_tbsm(list_of_tuples, mode),
         shuffle=False,
     )
 

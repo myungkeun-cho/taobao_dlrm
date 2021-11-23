@@ -781,43 +781,21 @@ def inference(
             continue
 
         # forward pass
-        if args.data_generation == "taobao" and not args.inference_only:
-            Z_test = dlrm_wrap(
-                X_test,
-                lS_o_test,
-                lS_i_test,
-                use_gpu,
-                device,
-                ndevices=ndevices,
-            )
-        elif args.data_generation == "taobao" and args.inference_only:
-            Z_test = dlrm_wrap(
-                X_test,
-                lS_o_test,
-                lS_i_test,
-                use_gpu,
-                device,
-                ndevices=ndevices,
-            )
-        else:
-            Z_test = dlrm_wrap(
-                X_test,
-                lS_o_test,
-                lS_i_test,
-                use_gpu,
-                device,
-                ndevices=ndevices,
-            )
+        Z_test = dlrm_wrap(
+            X_test,
+            lS_o_test,
+            lS_i_test,
+            use_gpu,
+            device,
+            ndevices=ndevices,
+        )
         ### gather the distributed results on each rank ###
         # For some reason it requires explicit sync before all_gather call if
         # tensor is on GPU memory
         if Z_test.is_cuda:
             torch.cuda.synchronize()
 
-        if args.data_generation == "taobao":
-            (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
-        else :
-            (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
+        (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
         if ext_dist.my_size > 1:
             Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
 
@@ -1040,44 +1018,19 @@ def run():
     parser.add_argument("--lr-num-decay-steps", type=int, default=0)
 
     #tbsm
-    #parser.add_argument("--datatype", type=str, default="taobao") -> args.data-generation
-    # mode: train or inference or both
-    parser.add_argument("--mode", type=str, default="train")  # train, test, train-test
     # data locations
     parser.add_argument("--raw-train-file", type=str, default="./data/taobao_data/taobao_train.txt")
-    parser.add_argument("--pro-train-file", type=str, default="./data/taobao_data/train2.npz")
+    parser.add_argument("--pro-train-file", type=str, default="./data/taobao_data/train3.npz")
     parser.add_argument("--raw-test-file", type=str, default="./data/taobao_data/taobao_test.txt")
-    parser.add_argument("--pro-test-file", type=str, default="./data/taobao_data/test2.npz")
-    parser.add_argument("--pro-val-file", type=str, default="./data/taobao_data/val2.npz")
-    parser.add_argument("--num-train-pts", type=int, default=100)
-    parser.add_argument("--num-val-pts", type=int, default=20)
+    parser.add_argument("--pro-test-file", type=str, default="./data/taobao_data/test4.npz")
+    parser.add_argument("--pro-val-file", type=str, default="./data/taobao_data/val3.npz")
+    parser.add_argument("--num-train-pts", type=int, default=690000)
+    parser.add_argument("--num-val-pts", type=int, default=300000)
     # time series length for train/val and test
-    parser.add_argument("--ts-length", type=int, default=20)
-    # model_type = "tsl", "mha", "rnn"
-    parser.add_argument("--model-type", type=str, default="tsl")  # tsl, mha, rnn
-    parser.add_argument("--tsl-seq", action="store_true", default=False)  # k-seq method
-    parser.add_argument("--tsl-proj", action="store_true", default=True)  # sphere proj
-    parser.add_argument("--tsl-inner", type=str, default="def")  # ind, def, dot
-    parser.add_argument("--tsl-num-heads", type=int, default=1)  # num tsl components
-    parser.add_argument("--mha-num-heads", type=int, default=8)  # num mha heads
-    parser.add_argument("--rnn-num-layers", type=int, default=5)  # num rnn layers
-    # num positive (and negative) points per user
     parser.add_argument("--points-per-user", type=int, default=10)
-    # model arch related parameters
-    parser.add_argument("--tsl-mlp", type=str, default="2-2")
-    # MLP 4: final prob. of click: 2 * top[-1] --> [0,1] (in_dim adjusted)
-    parser.add_argument("--arch-mlp", type=str, default="4-1")
-    # interactions
-    parser.add_argument("--tsl-interaction-op", type=str, default="dot")
-    parser.add_argument("--tsl-mechanism", type=str, default="mlp")  # mul or MLP
-    parser.add_argument("--no-select-seed", action="store_true", default=False)
-    # inference
-    parser.add_argument("--quality-metric", type=str, default="auc")
-    # saving model
-    parser.add_argument("--device-num", type=int, default=0)
 
+    #custom_option
     parser.add_argument("--enable-summary", action="store_true", default=False)
-    parser.add_argument("--run-fast", action="store_true", default=False)
 
     global args
     global nbatches
@@ -1725,7 +1678,6 @@ def run():
                     # testing
                     if should_test:
                         if args.data_generation == "taobao":
-                            #epoch_num_float = (j + 1) / len(val_ld) + k + 1
                             epoch_num_float = (j + 1) / len(val_ld) + k + 1
                         else:
                             epoch_num_float = (j + 1) / len(train_ld) + k + 1
