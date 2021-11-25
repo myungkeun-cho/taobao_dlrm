@@ -7,6 +7,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 # miscellaneous
+import random
 from os import path
 import sys
 
@@ -15,6 +16,8 @@ import numpy as np
 
 # pytorch
 import torch
+
+import random
 
 # dataset (either synthetic or Taobao)
 class TBSMDataset():
@@ -203,6 +206,9 @@ class TBSMDataset():
                     dtype=np.int32
                 )
 
+                #random
+                time = time * i
+
                 # select datapoints
                 first = np.argmax(items_ > 0)
                 ind = int((last - first) // 10)  # index into regime array
@@ -262,13 +268,18 @@ class TBSMDataset():
             for i, _ in enumerate(f):
                 if i % 50000 == 0:
                     print("pre-processing line: ", i)
-        self.total = i + 1
+        self.total = min(self.total, i + 1)
 
-        self.total_out = self.total  # pos + neg points
+        self.total_out = self.total * self.points_per_user * 2  # pos + neg points
         print("Total number of points in raw datafile: ", self.total)
         print("Total number of points in output will be at most: ", self.total_out)
 
-        time = np.arange(1, dtype=np.int32) / (1)
+        np.random.seed(self.numpy_rand_seed)
+
+        r_target = np.arange(0, self.M - 1)
+
+        #time = np.arange(1, dtype=np.int32) / (1)
+        time = np.array([np.random.randint(self.numpy_rand_seed)], dtype=np.int32) / self.numpy_rand_seed
 
         users = np.zeros((self.total_out, 1), dtype="i4")  # 4 byte int
         items = np.zeros((self.total_out, 1), dtype="i4")  # 4 byte int
@@ -276,10 +287,18 @@ class TBSMDataset():
         times = np.zeros((self.total_out, 1), dtype=np.float)
         y = np.zeros(self.total_out, dtype="i4")  # 4 byte int
 
+        k = 20
+        regime = np.zeros(k, dtype=np.int)
+
+        for j in range(k):
+            regime[j] = self.points_per_user
+
+        last = self.M - 1
+
         # try to generate the desired number of points (time series) per each user.
         # if history is short it may not succeed to generate sufficiently different
         # time series for a particular user.
-        t, t_pos, t_neg = 0, 0, 0
+        t, t_pos, t_neg, t_short = 0, 0, 0, 0
         with open(str(raw_path)) as f:
             for i, line in enumerate(f):
                 if i % 1000 == 0:
@@ -289,10 +308,12 @@ class TBSMDataset():
                 units = line.strip().split("\t")
                 item_hist_list = units[4].split(",")
                 cate_hist_list = units[5].split(",")
+                neg_item_hist_list = units[6].split(",")
+                neg_cate_hist_list = units[7].split(",")
 
                 user = np.array(np.maximum(np.int32(units[0]) - self.Inum, 0),
                     dtype=np.int32)
-                y[t] = np.int32(units[3])
+                y[i] = np.int32(units[3])
                 items_ = np.array(
                     list(map(lambda x: np.maximum(np.int32(x), 0), item_hist_list)),
                     dtype=np.int32
@@ -301,27 +322,66 @@ class TBSMDataset():
                     list(map(lambda x: np.maximum(np.int32(x)
                         - self.Inum - self.Unum, 0), cate_hist_list)), dtype=np.int32
                 )
+                neg_items_ = np.array(
+                    list(map(lambda x: np.maximum(np.int32(x), 0), neg_item_hist_list)),
+                    dtype=np.int32
+                )
+                neg_cats_ = np.array(
+                    list(map(lambda x: np.maximum(np.int32(x)
+                        - self.Inum - self.Unum, 0), neg_cate_hist_list)),
+                    dtype=np.int32
+                )
 
-                # get pts
-                items[t] = items_[-1:]
-                cats[t] = cats_[-1:]
-                users[t] = np.full(1, user)
-                times[t] = time
-                # check
-                if np.any(users[t] < 0) or np.any(items[t] < 0) \
-                        or np.any(cats[t] < 0):
-                    sys.exit("Categorical feature less than zero after \
-                        processing. Aborting...")
-                if y[t] == 1:
+                #for random
+                time = time * i
+
+                # select datapoints
+                first = np.argmax(items_ > 0)
+                ind = int((last - first) // 10)  # index into regime array
+                # pos
+                for _ in range(regime[ind]):
+                    a1 = min(first, last - 1)
+                    end = np.random.randint(a1, last)
+                    indices = np.arange(end, end + 1)
+                    if items_[indices[0]] == 0:
+                        t_short += 1
+                    items[t] = items_[indices]
+                    cats[t] = cats_[indices]
+                    users[t] = np.full(1, user)
+                    times[t] = time
+                    y[t] = 1
+                    # check
+                    if np.any(users[t] < 0) or np.any(items[t] < 0) \
+                            or np.any(cats[t] < 0):
+                        sys.exit("Categorical feature less than zero after \
+                                            processing. Aborting...")
+                    t += 1
                     t_pos += 1
-                else:
+                # neg
+                for _ in range(regime[ind]):
+                    a1 = min(first - 1, last - 1)
+                    end = np.random.randint(a1, last)
+                    indices = np.arange(end, end + 1)
+                    if items_[indices[0]] == 0:
+                        t_short += 1
+                    items[t, :-1] = items_[indices]
+                    cats[t, :-1] = cats_[indices]
+                    neg_indices = np.random.choice(r_target, 1,
+                                                   replace=False)  # random final item
+                    items[t, -1] = neg_items_[neg_indices]
+                    cats[t, -1] = neg_cats_[neg_indices]
+                    users[t] = np.full(1, user)
+                    times[t] = time
+                    y[t] = 0
+                    # check
+                    if np.any(users[t] < 0) or np.any(items[t] < 0) \
+                            or np.any(cats[t] < 0):
+                        sys.exit("Categorical feature less than zero after \
+                            processing. Aborting...")
                     t_neg += 1
-                t += 1
+                    t += 1
 
         print("total points, pos points, neg points: ", t, t_pos, t_neg)
-
-        #for multi hot
-
 
         self.truncate_and_save(out_file, False, t, users, items, cats, times, y)
         return
@@ -387,27 +447,27 @@ def collate_wrapper_tbsm(list_of_tuples, data_generation):
     T = []
     data_buf = []
 
-    if data_generation == "train" or data_generation == "val":
-        # transform data into the form used in dlrm nn
-        lS_i_h = []
-        for i in range(num_cat_fea):
-            for j in all_cat[:,i]:
-                lS_i_buf.extend(j)
-            lS_i_h.append(torch.tensor(lS_i_buf))
-            lS_i_buf = []
+    #if data_generation == "train" or data_generation == "val":
+    # transform data into the form used in dlrm nn
+    lS_i_h = []
+    for i in range(num_cat_fea):
+        for j in all_cat[:,i]:
+            lS_i_buf.extend(j)
+        lS_i_h.append(torch.tensor(lS_i_buf))
+        lS_i_buf = []
 
-        lS_o_h = [torch.tensor(list(range(0, batchSize, 10))) for _ in range(len(lS_i_h))]
+    lS_o_h = [torch.tensor(list(range(0, batchSize, 10))) for _ in range(len(lS_i_h))]
 
-        lS_i = lS_i_h
-        lS_o = lS_o_h
-        for k in range(0, batchSize, 10):
-            X_buf.append([all_int[k][0].tolist()])
-        X = torch.tensor(X_buf)
+    lS_i = lS_i_h
+    lS_o = lS_o_h
+    for k in range(0, batchSize, 10):
+        X_buf.append([all_int[k][0].tolist()])
+    X = torch.tensor(X_buf)
 
-        for k, l in enumerate(data[2]):
-            if k%10 == 0:
-                data_buf.append(l)
-        T = torch.tensor(tuple(data_buf), dtype=torch.float32).view(-1, 1)
+    for k, l in enumerate(data[2]):
+        if k%10 == 0:
+            data_buf.append(l)
+    T = torch.tensor(tuple(data_buf), dtype=torch.float32).view(-1, 1)
 
     return X, lS_o, lS_i, T
 
@@ -431,8 +491,8 @@ def make_tbsm_data_and_loader(args, mode):
     else:
         raw = args.raw_test_file
         proc = args.pro_test_file
-        numpts = 1
-        batchsize = 25000
+        numpts = args.num_test_pts
+        batchsize = args.test_mini_batch_size
         doshuffle = False
 
     data = TBSMDataset(

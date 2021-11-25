@@ -1020,12 +1020,13 @@ def run():
     #tbsm
     # data locations
     parser.add_argument("--raw-train-file", type=str, default="./data/taobao_data/taobao_train.txt")
-    parser.add_argument("--pro-train-file", type=str, default="./data/taobao_data/train3.npz")
+    parser.add_argument("--pro-train-file", type=str, default="./data/taobao_data/train.npz")
     parser.add_argument("--raw-test-file", type=str, default="./data/taobao_data/taobao_test.txt")
-    parser.add_argument("--pro-test-file", type=str, default="./data/taobao_data/test4.npz")
-    parser.add_argument("--pro-val-file", type=str, default="./data/taobao_data/val3.npz")
+    parser.add_argument("--pro-test-file", type=str, default="./data/taobao_data/test.npz")
+    parser.add_argument("--pro-val-file", type=str, default="./data/taobao_data/val.npz")
     parser.add_argument("--num-train-pts", type=int, default=690000)
     parser.add_argument("--num-val-pts", type=int, default=300000)
+    parser.add_argument("--num-test-pts", type=int, default=290000)
     # time series length for train/val and test
     parser.add_argument("--points-per-user", type=int, default=10)
 
