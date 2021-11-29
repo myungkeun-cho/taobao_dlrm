@@ -12,6 +12,8 @@ from os import path
 import sys
 
 # numpy and scikit-learn
+from typing import List, Any
+
 import numpy as np
 
 # pytorch
@@ -36,6 +38,8 @@ class TBSMDataset():
         # save arguments
         if mode == "train":
             self.numpy_rand_seed = numpy_rand_seed
+        elif mode == "test":
+            self.numpy_rand_seed = numpy_rand_seed - 31
         else:
             self.numpy_rand_seed = numpy_rand_seed + 31
         self.mode = mode
@@ -207,7 +211,7 @@ class TBSMDataset():
                 )
 
                 #random
-                time = time * i
+                time = time * np.random.rand()
 
                 # select datapoints
                 first = np.argmax(items_ > 0)
@@ -333,7 +337,7 @@ class TBSMDataset():
                 )
 
                 #for random
-                time = time * i
+                time = time * np.random.rand()
 
                 # select datapoints
                 first = np.argmax(items_ > 0)
@@ -424,7 +428,7 @@ class TBSMDataset():
 
 # defines transform to be performed during each call to batch,
 # used by loader
-def collate_wrapper_tbsm(list_of_tuples, data_generation):
+def collate_wrapper_tbsm(list_of_tuples):
     # turns tuple into X, S_o, S_i, take last ts_length items
 
     data = list(zip(*list_of_tuples))
@@ -508,9 +512,9 @@ def make_tbsm_data_and_loader(args, mode):
 
     loader = torch.utils.data.DataLoader(
         data,
-        batch_size=batchsize * 10,
+        batch_size=batchsize,
         num_workers=0,
-        collate_fn= lambda list_of_tuples : collate_wrapper_tbsm(list_of_tuples, mode),
+        collate_fn=collate_wrapper_tbsm,
         shuffle=False,
     )
 
